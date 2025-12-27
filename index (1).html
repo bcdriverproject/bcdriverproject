@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>BC DRIVER - Controle Financeiro Premium</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Fonte Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- React 17 e ReactDOM 17 -->
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+  <style>
+    :root {
+      --bg-main: #0B0B0D;
+      --bg-card: #18181C;
+      --bg-card-alt: #24252B;
+
+      --gold: #D4AF37;
+      --gold-dark: #B08A2E;
+
+      --text-primary: #FFFFFF;
+      --text-secondary: #E5E5E5;
+      --text-muted: #A0A0A5;
+
+      --border-subtle: #2F3138;
+
+      --success: #3BAF75;
+      --warning: #E0B24C;
+      --danger: #D9534F;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Poppins", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+    }
+
+    button {
+      font-family: inherit;
+    }
+
+    /* Scrollbar mais discreta */
+    ::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #111;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function App() {
+      const [activeTab, setActiveTab] = React.useState('dashboard');
+      const [monthlyGoal, setMonthlyGoal] = React.useState(16500);
+      const [ganhos, setGanhos] = React.useState([]);
+      const [gastos, setGastos] = React.useState([]);
+      const [dividas, setDividas] = React.useState([]);
+      const [horas, setHoras] = React.useState([]);
+
+      // Form states
+      const [ganhoForm, setGanhoForm] = React.useState({ data: '', tipo: 'uber', valor: '', obs: '' });
+      const [gastoForm, setGastoForm] = React.useState({ data: '', categoria: 'combustivel', valor: '', obs: '' });
+      const [dividaForm, setDividaForm] = React.useState({ nome: '', valorTotal: '', valorParcela: '', totalParcelas: '', parcelasPagas: '', dataVencimento: '' });
+      const [horaForm, setHoraForm] = React.useState({ data: '', horas: '', obs: '' });
+
+      // Load data from localStorage
+      React.useEffect(() => {
+        const savedGanhos = localStorage.getItem('bcdriver_ganhos');
+        const savedGastos = localStorage.getItem('bcdriver_gastos');
+        const savedDividas = localStorage.getItem('bcdriver_dividas');
+        const savedHoras = localStorage.getItem('bcdriver_horas');
+        const savedGoal = localStorage.getItem('bcdriver_goal');
+
+        if (savedGanhos) setGanhos(JSON.parse(savedGanhos));
+        if (savedGastos) setGastos(JSON.parse(savedGastos));
+        if (savedDividas) setDividas(JSON.parse(savedDividas));
+        if (savedHoras) setHoras(JSON.parse(savedHoras));
+        if (savedGoal) setMonthlyGoal(Number(savedGoal));
+      }, []);
+
+      // Save data to localStorage
+      React.useEffect(() => {
+        localStorage.setItem('bcdriver_ganhos', JSON.stringify(ganhos));
+      }, [ganhos]);
+
+      React.useEffect(() => {
+        localStorage.setItem('bcdriver_gastos', JSON.stringify(gastos));
+      }, [gastos]);
+
+      React.useEffect(() => {
+        localStorage.setItem('bcdriver_dividas', JSON.stringify(dividas));
+      }, [dividas]);
+
+      React.useEffect(() => {
+        localStorage.setItem('bcdriver_horas', JSON.stringify(horas));
+      }, [horas]);
+
+      React.useEffect(() => {
+        localStorage.setItem('bcdriver_goal', monthlyGoal);
+      }, [monthlyGoal]);
+
+      // Calculations
+      const currentMonth = new Date().toISOString().slice(0, 7);
+
+      const ganhosMes = ganhos
+        .filter(g => g.data && g.data.startsWith(currentMonth))
+        .reduce((sum, g) => sum + (g.valor || 0), 0);
+      const gastosMes = gastos
+        .filter(g => g.data && g.data.startsWith(currentMonth))
+        .reduce((sum, g) => sum + (g.valor || 0), 0);
+      const horasMes = horas
+        .filter(h => h.data && h.data.startsWith(currentMonth))
+        .reduce((sum, h) => sum + (h.horas || 0), 0);
+
+      const dividasAtivas = dividas.filter(d => (d.parcelasPagas || 0) < (d.totalParcelas || 0));
+      const dividasMes = dividasAtivas.reduce((sum, d) => sum + (d.valorParcela || 0), 0);
+
+      const lucroReal = ganhosMes - gastosMes - dividasMes;
+      const lucroPorHora = horasMes > 0 ? lucroReal / horasMes : 0;
+      const progressoMeta = monthlyGoal > 0 ? (ganhosMes / monthlyGoal) * 100 : 0;
+      const faltaMeta = monthlyGoal - ganhosMes;
+
+      // Intelligent Messages (Premium Profile)
+      const getMensagemLucroPorHora = () => {
+        if (!isFinite(lucroPorHora)) {
+          return { texto: "Registre horas e ganhos para calcular o lucro por hora.", cor: '#A0A0A5' };
+        }
+        if (lucroPorHora >= 60) {
+          return { texto: '🏆 Excelente! Você está no padrão premium esperado.', cor: '#D4AF37' };
+        } else if (lucroPorHora >= 45) {
+          return { texto: '⚠️ Razoável, mas abaixo do seu padrão. Foque em corridas premium.', cor: '#E0B24C' };
+        } else if (lucroPorHora >= 30) {
+          return { texto: '❌ Lucro baixo. Revise sua estratégia e horários.', cor: '#D9534F' };
+        } else {
+          return { texto: '🚨 Crítico! Você está trabalhando quase sem lucro.', cor: '#D9534F' };
+        }
+      };
+
+      const getMensagemMeta = () => {
+        if (!isFinite(progressoMeta)) {
+          return { texto: 'Defina uma meta mensal para acompanhar seu progresso.', cor: '#A0A0A5' };
+        }
+        if (ganhosMes >= monthlyGoal && monthlyGoal > 0) {
+          return { texto: '✅ Meta batida! Continue assim para maximizar o lucro.', cor: '#D4AF37' };
+        } else if (progressoMeta >= 80) {
+          return { texto: `💪 Quase lá! Faltam R$ ${faltaMeta.toFixed(2)} para bater a meta.`, cor: '#3BAF75' };
+        } else if (progressoMeta >= 50) {
+          return { texto: `📊 No caminho. Faltam R$ ${faltaMeta.toFixed(2)}. Mantenha o ritmo.`, cor: '#E0B24C' };
+        } else {
+          return { texto: `⚡ Acelere! Faltam R$ ${faltaMeta.toFixed(2)}. Foque em dias produtivos.`, cor: '#D9534F' };
+        }
+      };
+
+      const getMensagemValePena = () => {
+        const hoje = new Date().toISOString().slice(0, 10);
+        const ganhosHoje = ganhos.filter(g => g.data === hoje).reduce((sum, g) => sum + (g.valor || 0), 0);
+        const gastosHoje = gastos.filter(g => g.data === hoje).reduce((sum, g) => sum + (g.valor || 0), 0);
+        const horasHoje = horas.filter(h => h.data === hoje).reduce((sum, h) => sum + (h.horas || 0), 0);
+        const lucroHoje = ganhosHoje - gastosHoje;
+        const lucroPorHoraHoje = horasHoje > 0 ? lucroHoje / horasHoje : 0;
+
+        if (horasHoje === 0) {
+          return { texto: '🚗 Ainda não há registro de horas hoje. Comece a rodar!', cor: '#A0A0A5' };
+        }
+
+        if (lucroPorHoraHoje >= 60) {
+          return { texto: '🔥 Sim! Dia excelente. Continue rodando em horários premium.', cor: '#D4AF37' };
+        } else if (lucroPorHoraHoje >= 45) {
+          return { texto: '👍 Vale a pena, mas tente melhorar a seleção de corridas.', cor: '#3BAF75' };
+        } else if (lucroPorHoraHoje >= 30) {
+          return { texto: '⚠️ Dia fraco. Considere mudar de região ou horário.', cor: '#E0B24C' };
+        } else {
+          return { texto: '❌ Não vale a pena. Melhor parar e descansar.', cor: '#D9534F' };
+        }
+      };
+
+      const getMensagemDividas = () => {
+        if (dividasMes === 0 || ganhosMes === 0) {
+          if (dividasMes === 0) {
+            return { texto: '✅ Sem dívidas ativas! Todo lucro é seu.', cor: '#3BAF75' };
+          }
+          return { texto: 'Registre ganhos e dívidas para analisar seu fluxo.', cor: '#A0A0A5' };
+        }
+
+        const percentualDividas = (dividasMes / ganhosMes) * 100;
+
+        if (percentualDividas >= 50) {
+          return { texto: `🚨 Alerta! ${percentualDividas.toFixed(0)}% dos ganhos vão para dívidas. Priorize quitação.`, cor: '#D9534F' };
+        } else if (percentualDividas >= 30) {
+          return { texto: `⚠️ ${percentualDividas.toFixed(0)}% dos ganhos vão para dívidas. Cuidado com novos compromissos.`, cor: '#E0B24C' };
+        } else if (percentualDividas >= 15) {
+          return { texto: `📊 ${percentualDividas.toFixed(0)}% dos ganhos vão para dívidas. Situação controlada.`, cor: '#3BAF75' };
+        } else {
+          return { texto: `✅ Apenas ${percentualDividas.toFixed(0)}% dos ganhos vão para dívidas. Excelente controle!`, cor: '#D4AF37' };
+        }
+      };
+
+      // Add functions
+      const addGanho = () => {
+        if (ganhoForm.data && ganhoForm.valor) {
+          setGanhos([...ganhos, { ...ganhoForm, valor: parseFloat(ganhoForm.valor), id: Date.now() }]);
+          setGanhoForm({ data: '', tipo: 'uber', valor: '', obs: '' });
+        }
+      };
+
+      const addGasto = () => {
+        if (gastoForm.data && gastoForm.valor) {
+          setGastos([...gastos, { ...gastoForm, valor: parseFloat(gastoForm.valor), id: Date.now() }]);
+          setGastoForm({ data: '', categoria: 'combustivel', valor: '', obs: '' });
+        }
+      };
+
+      const addDivida = () => {
+        if (dividaForm.nome && dividaForm.valorTotal && dividaForm.valorParcela && dividaForm.totalParcelas) {
+          setDividas([...dividas, {
+            ...dividaForm,
+            valorTotal: parseFloat(dividaForm.valorTotal),
+            valorParcela: parseFloat(dividaForm.valorParcela),
+            totalParcelas: parseInt(dividaForm.totalParcelas),
+            parcelasPagas: parseInt(dividaForm.parcelasPagas || 0),
+            id: Date.now()
+          }]);
+          setDividaForm({ nome: '', valorTotal: '', valorParcela: '', totalParcelas: '', parcelasPagas: '', dataVencimento: '' });
+        }
+      };
+
+      const addHora = () => {
+        if (horaForm.data && horaForm.horas) {
+          setHoras([...horas, { ...horaForm, horas: parseFloat(horaForm.horas), id: Date.now() }]);
+          setHoraForm({ data: '', horas: '', obs: '' });
+        }
+      };
+
+      const pagarParcela = (id) => {
+        setDividas(dividas.map(d => d.id === id ? { ...d, parcelasPagas: (d.parcelasPagas || 0) + 1 } : d));
+      };
+
+      const deleteDivida = (id) => {
+        setDividas(dividas.filter(d => d.id !== id));
+      };
+
+      const exportData = () => {
+        const data = { ganhos, gastos, dividas, horas, monthlyGoal };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bcdriver_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+      };
+
+      const clearAllData = () => {
+        if (confirm('⚠️ Tem certeza? Todos os dados serão apagados permanentemente.')) {
+          setGanhos([]);
+          setGastos([]);
+          setDividas([]);
+          setHoras([]);
+          localStorage.clear();
+        }
+      };
+
+      const msgLucroPorHora = getMensagemLucroPorHora();
+      const msgMeta = getMensagemMeta();
+      const msgValePena = getMensagemValePena();
+      const msgDividas = getMensagemDividas();
+
+      return (
+        <div style={{ 
+          fontFamily: "'Poppins', sans-serif", 
+          backgroundColor: '#0B0B0D', 
+          color: '#FFFFFF', 
+          minHeight: '100vh',
+          padding: '0'
+        }}>
+          {/* Header */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, #0B0B0D 0%, #18181C 100%)',
+            borderBottom: '1px solid #2F3138',
+            padding: '20px 24px',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ 
+                width: '40px', 
+                height: '40px', 
+                background: 'linear-gradient(135deg, #D4AF37 0%, #B08A2E 100%)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: '700',
+                fontSize: '18px',
+                color: '#0B0B0D'
+              }}>BC</div>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', letterSpacing: '0.02em' }}>BC DRIVER</h1>
+                <p style={{ margin: 0, fontSize: '12px', color: '#A0A0A5', fontWeight: '400' }}>Controle Financeiro Premium</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div style={{ 
+            display: 'flex', 
+            overflowX: 'auto', 
+            gap: '8px',
+            padding: '16px 24px',
+            backgroundColor: '#18181C',
+            borderBottom: '1px solid #2F3138'
+          }}>
+            {[
+              { id: 'dashboard', label: '📊 Dashboard' },
+              { id: 'ganhos', label: '💰 Ganhos' },
+              { id: 'gastos', label: '💳 Gastos' },
+              { id: 'dividas', label: '📋 Dívidas' },
+              { id: 'horas', label: '⏱️ Horas' },
+              { id: 'config', label: '⚙️ Config' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  padding: '10px 18px',
+                  border: 'none',
+                  borderRadius: '999px',
+                  backgroundColor: activeTab === tab.id ? '#D4AF37' : 'transparent',
+                  color: activeTab === tab.id ? '#0B0B0D' : '#E5E5E5',
+                  cursor: 'pointer',
+                  fontWeight: activeTab === tab.id ? '600' : '500',
+                  fontSize: '14px',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s',
+                  fontFamily: "'Poppins', sans-serif"
+                }}
+              >{tab.label}</button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+
+            {/* DASHBOARD */}
+            {activeTab === 'dashboard' && (
+              <div>
+                {/* Intelligent Messages */}
+                <div style={{ marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>
+                    💡 Análise Inteligente
+                  </h2>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${msgValePena.cor}`
+                    }}>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', marginBottom: '6px', fontWeight: '500' }}>
+                        Vale a pena continuar rodando hoje?
+                      </p>
+                      <p style={{ margin: 0, fontSize: '15px', color: msgValePena.cor, fontWeight: '600' }}>
+                        {msgValePena.texto}
+                      </p>
+                    </div>
+
+                    <div style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${msgMeta.cor}`
+                    }}>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', marginBottom: '6px', fontWeight: '500' }}>
+                        Quanto falta para bater a meta mensal?
+                      </p>
+                      <p style={{ margin: 0, fontSize: '15px', color: msgMeta.cor, fontWeight: '600' }}>
+                        {msgMeta.texto}
+                      </p>
+                    </div>
+
+                    <div style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${msgLucroPorHora.cor}`
+                    }}>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', marginBottom: '6px', fontWeight: '500' }}>
+                        Qual é meu lucro por hora?
+                      </p>
+                      <p style={{ margin: 0, fontSize: '15px', color: msgLucroPorHora.cor, fontWeight: '600' }}>
+                        {msgLucroPorHora.texto}
+                      </p>
+                    </div>
+
+                    <div style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${msgDividas.cor}`
+                    }}>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', marginBottom: '6px', fontWeight: '500' }}>
+                        Estou trabalhando para pagar dívidas ou já estou no lucro?
+                      </p>
+                      <p style={{ margin: 0, fontSize: '15px', color: msgDividas.cor, fontWeight: '600' }}>
+                        {msgDividas.texto}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                  <div style={{ backgroundColor: '#18181C', padding: '18px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '500' }}>
+                      Ganhos do Mês
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '26px', fontWeight: '700', color: '#FFFFFF' }}>
+                      R$ {ganhosMes.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div style={{ backgroundColor: '#18181C', padding: '18px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '500' }}>
+                      Lucro Real
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '26px', fontWeight: '700', color: lucroReal >= 0 ? '#3BAF75' : '#D9534F' }}>
+                      R$ {lucroReal.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div style={{ backgroundColor: '#18181C', padding: '18px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '500' }}>
+                      Lucro por Hora
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '26px', fontWeight: '700', color: lucroPorHora >= 60 ? '#D4AF37' : lucroPorHora >= 45 ? '#E0B24C' : '#D9534F' }}>
+                      R$ {lucroPorHora.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div style={{ backgroundColor: '#18181C', padding: '18px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A5', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '500' }}>
+                      Horas Trabalhadas
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '26px', fontWeight: '700', color: '#FFFFFF' }}>
+                      {horasMes.toFixed(1)}h
+                    </p>
+                  </div>
+                </div>
+
+                {/* Meta Progress */}
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', border: '1px solid #2F3138', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <p style={{ margin: 0, fontSize: '14px', color: '#A0A0A5', fontWeight: '500' }}>Progresso da Meta Mensal</p>
+                    <p style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: progressoMeta >= 100 ? '#D4AF37' : '#E5E5E5' }}>
+                      {isFinite(progressoMeta) ? progressoMeta.toFixed(1) : '0.0'}%
+                    </p>
+                  </div>
+                  <div style={{ 
+                    backgroundColor: '#24252B', 
+                    borderRadius: '999px', 
+                    height: '12px', 
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    <div style={{ 
+                      width: `${Math.min(isFinite(progressoMeta) ? progressoMeta : 0, 100)}%`, 
+                      height: '100%', 
+                      background: progressoMeta >= 100
+                        ? 'linear-gradient(90deg, #D4AF37, #F5E3A3)'
+                        : progressoMeta >= 80
+                          ? 'linear-gradient(90deg, #3BAF75, #D4AF37)'
+                          : 'linear-gradient(90deg, #E0B24C, #3BAF75)',
+                      transition: 'width 0.3s',
+                      borderRadius: '999px'
+                    }}></div>
+                  </div>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#A0A0A5' }}>
+                    Meta: R$ {monthlyGoal.toFixed(2)}
+                  </p>
+                </div>
+
+                {/* Financial Breakdown */}
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '600', color: '#E5E5E5' }}>
+                    Detalhamento Financeiro
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #2F3138' }}>
+                      <span style={{ color: '#A0A0A5', fontSize: '14px' }}>💰 Ganhos Totais</span>
+                      <span style={{ color: '#3BAF75', fontWeight: '600', fontSize: '15px' }}>+ R$ {ganhosMes.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #2F3138' }}>
+                      <span style={{ color: '#A0A0A5', fontSize: '14px' }}>💳 Gastos Operacionais</span>
+                      <span style={{ color: '#E0B24C', fontWeight: '600', fontSize: '15px' }}>- R$ {gastosMes.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #2F3138' }}>
+                      <span style={{ color: '#A0A0A5', fontSize: '14px' }}>📋 Dívidas do Mês</span>
+                      <span style={{ color: '#D9534F', fontWeight: '600', fontSize: '15px' }}>- R$ {dividasMes.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0 0 0' }}>
+                      <span style={{ color: '#FFFFFF', fontWeight: '600', fontSize: '15px' }}>💎 Lucro Real</span>
+                      <span style={{ color: lucroReal >= 0 ? '#D4AF37' : '#D9534F', fontWeight: '700', fontSize: '18px' }}>
+                        R$ {lucroReal.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* GANHOS */}
+            {activeTab === 'ganhos' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>💰 Registrar Ganho</h2>
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #2F3138' }}>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Data</label>
+                      <input 
+                        type="date" 
+                        value={ganhoForm.data}
+                        onChange={(e) => setGanhoForm({...ganhoForm, data: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Tipo</label>
+                      <select 
+                        value={ganhoForm.tipo}
+                        onChange={(e) => setGanhoForm({...ganhoForm, tipo: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }}
+                      >
+                        <option value="uber">Uber</option>
+                        <option value="particular">Particular</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Valor (R$)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={ganhoForm.valor}
+                        onChange={(e) => setGanhoForm({...ganhoForm, valor: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Observação (opcional)</label>
+                      <input 
+                        type="text"
+                        value={ganhoForm.obs}
+                        onChange={(e) => setGanhoForm({...ganhoForm, obs: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <button 
+                      onClick={addGanho}
+                      style={{ 
+                        padding: '14px', 
+                        backgroundColor: '#D4AF37', 
+                        border: 'none', 
+                        borderRadius: '999px', 
+                        color: '#0B0B0D', 
+                        fontWeight: '600',
+                        fontSize: '15px',
+                        cursor: 'pointer',
+                        fontFamily: "'Poppins', sans-serif"
+                      }}
+                    >Adicionar Ganho</button>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>Histórico de Ganhos</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {ganhos.slice().reverse().map(g => (
+                    <div key={g.id} style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '10px',
+                      border: '1px solid #2F3138',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '14px', color: '#E5E5E5', fontWeight: '600' }}>
+                          {g.tipo === 'uber' ? '🚗 Uber' : '👤 Particular'}
+                        </p>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#A0A0A5' }}>
+                          {g.data ? new Date(g.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
+                          {g.obs && ` • ${g.obs}`}
+                        </p>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#3BAF75' }}>
+                        R$ {g.valor?.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                  {ganhos.length === 0 && (
+                    <p style={{ textAlign: 'center', color: '#A0A0A5', padding: '40px 0', fontSize: '14px' }}>
+                      Nenhum ganho registrado ainda.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* GASTOS */}
+            {activeTab === 'gastos' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>💳 Registrar Gasto</h2>
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #2F3138' }}>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Data</label>
+                      <input 
+                        type="date" 
+                        value={gastoForm.data}
+                        onChange={(e) => setGastoForm({...gastoForm, data: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Categoria</label>
+                      <select 
+                        value={gastoForm.categoria}
+                        onChange={(e) => setGastoForm({...gastoForm, categoria: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }}
+                      >
+                        <option value="combustivel">⛽ Combustível/Energia</option>
+                        <option value="internet">📡 Internet</option>
+                        <option value="lavagem">🧼 Lavagem</option>
+                        <option value="alimentacao">🍔 Alimentação</option>
+                        <option value="manutencao">🔧 Manutenção</option>
+                        <option value="equipamentos">📱 Equipamentos</option>
+                        <option value="outros">📦 Outros</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Valor (R$)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={gastoForm.valor}
+                        onChange={(e) => setGastoForm({...gastoForm, valor: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Observação (opcional)</label>
+                      <input 
+                        type="text"
+                        value={gastoForm.obs}
+                        onChange={(e) => setGastoForm({...gastoForm, obs: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <button 
+                      onClick={addGasto}
+                      style={{ 
+                        padding: '14px', 
+                        backgroundColor: '#D4AF37', 
+                        border: 'none', 
+                        borderRadius: '999px', 
+                        color: '#0B0B0D', 
+                        fontWeight: '600',
+                        fontSize: '15px',
+                        cursor: 'pointer',
+                        fontFamily: "'Poppins', sans-serif"
+                      }}
+                    >Adicionar Gasto</button>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>Histórico de Gastos</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {gastos.slice().reverse().map(g => (
+                    <div key={g.id} style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '10px',
+                      border: '1px solid #2F3138',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '14px', color: '#E5E5E5', fontWeight: '600' }}>
+                          {g.categoria === 'combustivel' ? '⛽ Combustível' :
+                           g.categoria === 'internet' ? '📡 Internet' :
+                           g.categoria === 'lavagem' ? '🧼 Lavagem' :
+                           g.categoria === 'alimentacao' ? '🍔 Alimentação' :
+                           g.categoria === 'manutencao' ? '🔧 Manutenção' :
+                           g.categoria === 'equipamentos' ? '📱 Equipamentos' : '📦 Outros'}
+                        </p>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#A0A0A5' }}>
+                          {g.data ? new Date(g.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
+                          {g.obs && ` • ${g.obs}`}
+                        </p>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#E0B24C' }}>
+                        R$ {g.valor?.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                  {gastos.length === 0 && (
+                    <p style={{ textAlign: 'center', color: '#A0A0A5', padding: '40px 0', fontSize: '14px' }}>
+                      Nenhum gasto registrado ainda.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* DÍVIDAS */}
+            {activeTab === 'dividas' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>📋 Registrar Dívida</h2>
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #2F3138' }}>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Nome da Dívida</label>
+                      <input 
+                        type="text"
+                        value={dividaForm.nome}
+                        onChange={(e) => setDividaForm({...dividaForm, nome: e.target.value})}
+                        placeholder="Ex: Financiamento do carro"
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Valor Total (R$)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          value={dividaForm.valorTotal}
+                          onChange={(e) => setDividaForm({...dividaForm, valorTotal: e.target.value})}
+                          style={{ 
+                            width: '100%', 
+                            padding: '12px', 
+                            backgroundColor: '#24252B', 
+                            border: '1px solid #2F3138', 
+                            borderRadius: '8px', 
+                            color: '#FFFFFF',
+                            fontSize: '14px',
+                            fontFamily: "'Poppins', sans-serif"
+                          }} 
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Valor da Parcela (R$)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          value={dividaForm.valorParcela}
+                          onChange={(e) => setDividaForm({...dividaForm, valorParcela: e.target.value})}
+                          style={{ 
+                            width: '100%', 
+                            padding: '12px', 
+                            backgroundColor: '#24252B', 
+                            border: '1px solid #2F3138', 
+                            borderRadius: '8px', 
+                            color: '#FFFFFF',
+                            fontSize: '14px',
+                            fontFamily: "'Poppins', sans-serif"
+                          }} 
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Total de Parcelas</label>
+                        <input 
+                          type="number"
+                          value={dividaForm.totalParcelas}
+                          onChange={(e) => setDividaForm({...dividaForm, totalParcelas: e.target.value})}
+                          style={{ 
+                            width: '100%', 
+                            padding: '12px', 
+                            backgroundColor: '#24252B', 
+                            border: '1px solid #2F3138', 
+                            borderRadius: '8px', 
+                            color: '#FFFFFF',
+                            fontSize: '14px',
+                            fontFamily: "'Poppins', sans-serif"
+                          }} 
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Parcelas Pagas</label>
+                        <input 
+                          type="number"
+                          value={dividaForm.parcelasPagas}
+                          onChange={(e) => setDividaForm({...dividaForm, parcelasPagas: e.target.value})}
+                          style={{ 
+                            width: '100%', 
+                            padding: '12px', 
+                            backgroundColor: '#24252B', 
+                            border: '1px solid #2F3138', 
+                            borderRadius: '8px', 
+                            color: '#FFFFFF',
+                            fontSize: '14px',
+                            fontFamily: "'Poppins', sans-serif"
+                          }} 
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Data de Vencimento</label>
+                      <input 
+                        type="date"
+                        value={dividaForm.dataVencimento}
+                        onChange={(e) => setDividaForm({...dividaForm, dataVencimento: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <button 
+                      onClick={addDivida}
+                      style={{ 
+                        padding: '14px', 
+                        backgroundColor: '#D4AF37', 
+                        border: 'none', 
+                        borderRadius: '999px', 
+                        color: '#0B0B0D', 
+                        fontWeight: '600',
+                        fontSize: '15px',
+                        cursor: 'pointer',
+                        fontFamily: "'Poppins', sans-serif"
+                      }}
+                    >Adicionar Dívida</button>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>Dívidas Ativas</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {dividas.filter(d => (d.parcelasPagas || 0) < (d.totalParcelas || 0)).map(d => {
+                    const progresso = (d.parcelasPagas || 0) / (d.totalParcelas || 1) * 100;
+                    return (
+                      <div key={d.id} style={{ 
+                        backgroundColor: '#18181C', 
+                        padding: '18px', 
+                        borderRadius: '12px',
+                        border: '1px solid #2F3138'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: '15px', color: '#E5E5E5', fontWeight: '600' }}>{d.nome}</p>
+                            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#A0A0A5' }}>
+                              {(d.parcelasPagas || 0)}/{d.totalParcelas} parcelas pagas
+                            </p>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#D9534F' }}>
+                            R$ {d.valorParcela?.toFixed(2)}/mês
+                          </p>
+                        </div>
+                        <div style={{ 
+                          backgroundColor: '#24252B', 
+                          borderRadius: '999px', 
+                          height: '8px', 
+                          overflow: 'hidden',
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{ 
+                            width: `${progresso}%`, 
+                            height: '100%', 
+                            backgroundColor: progresso >= 80 ? '#3BAF75' : '#E0B24C',
+                            borderRadius: '999px'
+                          }}></div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            onClick={() => pagarParcela(d.id)}
+                            disabled={(d.parcelasPagas || 0) >= (d.totalParcelas || 0)}
+                            style={{ 
+                              flex: 1,
+                              padding: '10px', 
+                              backgroundColor: (d.parcelasPagas || 0) >= (d.totalParcelas || 0) ? '#24252B' : '#3BAF75', 
+                              border: 'none', 
+                              borderRadius: '8px', 
+                              color: (d.parcelasPagas || 0) >= (d.totalParcelas || 0) ? '#A0A0A5' : '#FFFFFF', 
+                              fontWeight: '600',
+                              fontSize: '13px',
+                              cursor: (d.parcelasPagas || 0) >= (d.totalParcelas || 0) ? 'not-allowed' : 'pointer',
+                              fontFamily: "'Poppins', sans-serif"
+                            }}
+                          >Pagar Parcela</button>
+                          <button 
+                            onClick={() => deleteDivida(d.id)}
+                            style={{ 
+                              flex: 1,
+                              padding: '10px', 
+                              backgroundColor: 'transparent', 
+                              border: '1px solid #D9534F', 
+                              borderRadius: '8px', 
+                              color: '#D9534F', 
+                              fontWeight: '600',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              fontFamily: "'Poppins', sans-serif"
+                            }}
+                          >Excluir</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {dividas.filter(d => (d.parcelasPagas || 0) < (d.totalParcelas || 0)).length === 0 && (
+                    <p style={{ textAlign: 'center', color: '#A0A0A5', padding: '40px 0', fontSize: '14px' }}>
+                      Nenhuma dívida ativa. Parabéns! 🎉
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* HORAS */}
+            {activeTab === 'horas' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>⏱️ Registrar Horas Trabalhadas</h2>
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #2F3138' }}>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Data</label>
+                      <input 
+                        type="date" 
+                        value={horaForm.data}
+                        onChange={(e) => setHoraForm({...horaForm, data: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Horas Trabalhadas</label>
+                      <input 
+                        type="number" 
+                        step="0.5"
+                        value={horaForm.horas}
+                        onChange={(e) => setHoraForm({...horaForm, horas: e.target.value})}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Observação (opcional)</label>
+                      <input 
+                        type="text"
+                        value={horaForm.obs}
+                        onChange={(e) => setHoraForm({...horaForm, obs: e.target.value})}
+                        placeholder="Ex: Manhã na região central"
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                    <button 
+                      onClick={addHora}
+                      style={{ 
+                        padding: '14px', 
+                        backgroundColor: '#D4AF37', 
+                        border: 'none', 
+                        borderRadius: '999px', 
+                        color: '#0B0B0D', 
+                        fontWeight: '600',
+                        fontSize: '15px',
+                        cursor: 'pointer',
+                        fontFamily: "'Poppins', sans-serif"
+                      }}
+                    >Adicionar Horas</button>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>Histórico de Horas</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {horas.slice().reverse().map(h => (
+                    <div key={h.id} style={{ 
+                      backgroundColor: '#18181C', 
+                      padding: '16px', 
+                      borderRadius: '10px',
+                      border: '1px solid #2F3138',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '14px', color: '#E5E5E5', fontWeight: '600' }}>
+                          {h.data ? new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
+                        </p>
+                        {h.obs && (
+                          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#A0A0A5' }}>{h.obs}</p>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#D4AF37' }}>
+                        {h.horas}h
+                      </p>
+                    </div>
+                  ))}
+                  {horas.length === 0 && (
+                    <p style={{ textAlign: 'center', color: '#A0A0A5', padding: '40px 0', fontSize: '14px' }}>
+                      Nenhuma hora registrada ainda.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* CONFIGURAÇÕES */}
+            {activeTab === 'config' && (
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px' }}>⚙️ Configurações</h2>
+
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '16px', border: '1px solid #2F3138' }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '600', color: '#E5E5E5' }}>Meta Mensal</h3>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#A0A0A5', fontWeight: '500' }}>Valor da Meta (R$)</label>
+                      <input 
+                        type="number" 
+                        step="100"
+                        value={monthlyGoal}
+                        onChange={(e) => setMonthlyGoal(Number(e.target.value || 0))}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          backgroundColor: '#24252B', 
+                          border: '1px solid #2F3138', 
+                          borderRadius: '8px', 
+                          color: '#FFFFFF',
+                          fontSize: '14px',
+                          fontFamily: "'Poppins', sans-serif"
+                        }} 
+                      />
+                    </div>
+                  </div>
+                  <p style={{ margin: '12px 0 0 0', fontSize: '12px', color: '#A0A0A5' }}>
+                    💡 Recomendado para perfil premium: R$ 15.000 - R$ 18.000
+                  </p>
+                </div>
+
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', marginBottom: '16px', border: '1px solid #2F3138' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#E5E5E5' }}>Backup de Dados</h3>
+                  <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#A0A0A5' }}>
+                    Exporte todos os seus dados para um arquivo JSON. Você pode usar este arquivo para restaurar seus dados em outro dispositivo.
+                  </p>
+                  <button 
+                    onClick={exportData}
+                    style={{ 
+                      width: '100%',
+                      padding: '12px', 
+                      backgroundColor: 'transparent', 
+                      border: '1px solid #D4AF37', 
+                      borderRadius: '8px', 
+                      color: '#D4AF37', 
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontFamily: "'Poppins', sans-serif"
+                    }}
+                  >📥 Exportar Dados</button>
+                </div>
+
+                <div style={{ backgroundColor: '#18181C', padding: '20px', borderRadius: '12px', border: '1px solid #2F3138' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#E5E5E5' }}>Zona de Perigo</h3>
+                  <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#A0A0A5' }}>
+                    ⚠️ Esta ação é irreversível. Todos os dados serão apagados permanentemente.
+                  </p>
+                  <button 
+                    onClick={clearAllData}
+                    style={{ 
+                      width: '100%',
+                      padding: '12px', 
+                      backgroundColor: '#D9534F', 
+                      border: 'none', 
+                      borderRadius: '8px', 
+                      color: '#FFFFFF', 
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontFamily: "'Poppins', sans-serif"
+                    }}
+                  >🗑️ Apagar Todos os Dados</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
